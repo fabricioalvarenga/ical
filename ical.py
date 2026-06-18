@@ -8,6 +8,7 @@ from email import policy
 IMAP_SERVER = os.environ["IMAP_SERVER"] 
 EMAIL = os.environ["EMAIL"]
 PASSWORD = os.environ["EMAIL_PASSWORD"]
+DOCUMENTS_FOLDER = os.environ["DOCUMENTS_FOLDER"]
 
 def main():
     mail = imaplib.IMAP4_SSL(IMAP_SERVER)
@@ -35,9 +36,7 @@ def main():
                     if not isinstance(calendar_data, bytes):
                         continue
 
-                    # TODO: Buscar o caminho da pasta Documents automaticamente
-                    with open("/Users/fabricioalvarenga/Documents/Downloads/reuniao.ics", "wb") as f:
-                        f.write(calendar_data)
+                    write_ics_file(calendar_data)
     finally:
         try:
             mail.logout()
@@ -106,6 +105,11 @@ def is_calendar_message(client, uid):
         return True
 
     return False
+
+def write_ics_file(data):
+    with open(f"{DOCUMENTS_FOLDER}/reuniao.ics", "wb") as f:
+        f.write(data)
+
     
 if __name__ == "__main__":
     main()
