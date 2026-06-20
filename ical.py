@@ -11,13 +11,13 @@ IMAP_SERVER = os.environ["IMAP_SERVER"]
 EMAIL = os.environ["EMAIL"]
 EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
 
-OUTPUT_DIR = Path("/tmp/meetings")
-MEETING_FILE = OUTPUT_DIR / "meeting.ics"
+OUTPUT_DIR = Path.home() / "Documents" / "Downloads" / ".meetings"
 STATE_FILE = OUTPUT_DIR / "state.json"
 
 OUTPUT_DIR.mkdir(parents = True, exist_ok = True)
 
 def main():
+    clear_meetings_directory()
 
     mail = imaplib.IMAP4_SSL(IMAP_SERVER)
 
@@ -42,6 +42,8 @@ def main():
             return
 
         for uid in sorted(new_uids):
+            highest_uid = uid
+
             if not body_structure_contains_calendar(mail, uid):
                 continue
 
@@ -50,25 +52,31 @@ def main():
             if message is None:
                 continue
 
-            calendar_data = extract_calendar_data(message)
+            for part in message.walk():
+                calendar_data = extract_calendar_data(part)
 
-            if calendar_data is None:
-                continue
+                if calendar_data is None:
+                    continue
 
-            save_ics_file(calendar_data)
+                file_path = define_meeting_file_path()
 
-            highest_uid = uid
+                save_ics_file(calendar_data, file_path)
 
-            save_state(current_mail_box_uid, highest_uid)
+                open_ics_file(file_path)
 
-            open_ics_file()
+#            break
 
-            break
+        save_state(current_mail_box_uid, highest_uid)
     finally:
         try:
             mail.logout()
         except Exception:
             pass
+
+def clear_meetings_directory():
+    for file_path in OUTPUT_DIR.glob("*.ics"):
+        if file_path.is_file():
+            file_path.unlink()
 
 def account_login(mail, email, password):
     status, _ = mail.login(email, password)
@@ -131,9 +139,10 @@ def body_structure_contains_calendar(mail, uid):
     if not isinstance(body_structure, bytes):
         return False
 
-    text = body_structure.decode("utf-8", errors = "replace").upper()
+    text = body_structure.decode("utf-8", errors = "replace").lower()
 
-    if ('"CALENDAR"' in text or '.ICS' in text or 'ICS' in text):
+    if ('"calendar"' in text or '.ics' in text or 'ics' in text):
+        print(f"{uid} cotains calendar")
         return True
 
     return False
@@ -156,22 +165,37 @@ def fetch_message(mail, uid):
 
     return email.message_from_bytes(raw_message, policy = policy.default)
 
-def extract_calendar_data(message):
-    for part in message.walk():
-        if part.get_content_type() == "text/calendar":
-            calendar_data = part.get_payload(decode = True)
+def define_meeting_file_path():
+    count = 1
 
-            if isinstance(calendar_data, bytes):
-                return calendar_data
+    while True:
+        file_path = OUTPUT_DIR / f"meeting[{count}].ics"
+
+        if not file_path.exists():
+            return file_path
+    
+        count += 1
+
+def extract_calendar_data(part):
+    content_type = part.get_content_type()
+    filename = part.get_filename()
+
+    is_calendar = (content_type == "text/calendar") or (filename is not None and filename.lower().endswith(".ics"))
+
+    if is_calendar:
+        calendar_data = part.get_payload(decode = True)
+
+        if isinstance(calendar_data, bytes):
+            return calendar_data
 
     return None
  
-def save_ics_file(calendar_data):
-    with MEETING_FILE.open("wb") as f:
+def save_ics_file(calendar_data, file_path):
+    with file_path.open("wb") as f:
         f.write(calendar_data)
 
-def open_ics_file():
-    subprocess.run(["open", MEETING_FILE])
+def open_ics_file(file_path):
+    subprocess.run(["open", file_path])
 
 if __name__ == "__main__":
     main()
